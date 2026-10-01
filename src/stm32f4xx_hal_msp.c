@@ -75,6 +75,17 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef *htim) {
         GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
         GPIO_InitStruct.Alternate = GPIO_AF2_TIM4;
         HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+    } else if (htim->Instance == TIM14) {
+        __HAL_RCC_TIM14_CLK_ENABLE();
+        __HAL_RCC_GPIOF_CLK_ENABLE();
+
+        /* PF9 - TIM14_CH1 (LCD Backlight PWM) */
+        GPIO_InitStruct.Pin = GPIO_PIN_9;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+        GPIO_InitStruct.Alternate = GPIO_AF9_TIM14;
+        HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
     }
 }
 
@@ -82,6 +93,9 @@ void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef *htim) {
     if (htim->Instance == TIM4) {
         __HAL_RCC_TIM4_CLK_DISABLE();
         HAL_GPIO_DeInit(GPIOB, GPIO_PIN_8);
+    } else if (htim->Instance == TIM14) {
+        __HAL_RCC_TIM14_CLK_DISABLE();
+        HAL_GPIO_DeInit(GPIOF, GPIO_PIN_9);
     }
 }
 

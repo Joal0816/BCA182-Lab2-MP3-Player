@@ -9,56 +9,125 @@
 #include "stm32f4xx_hal.h"
 #include "FreeRTOS.h"
 #include "semphr.h"
+#include "task.h"
 #include "hardware_config.h"
 
+_lcd_dev lcddev = {
+    LCD_WIDTH,  /* width */
+    LCD_HEIGHT, /* height */
+    0,          /* id */
+    0,          /* dir (0: vertical) */
+    0x2C,       /* wramcmd */
+    0x2A,       /* setxcmd */
+    0x2B        /* setycmd */
+};
+
 static SRAM_HandleTypeDef hsram;
+static TIM_HandleTypeDef s_htim14;
 static SemaphoreHandle_t s_lcd_mutex = NULL;
 
-/* FSMC Bank 1 NOR/SRAM 3 addresses:
- * Bit 18 (PD13 / FSMC_A18) connects to ST7789 DCX (RS).
- * In 8-bit mode on STM32 FSMC:
- * Address 0x6803FFFE has bit 18 = 0 (Command REG)
- * Address 0x68040000 has bit 18 = 1 (Data RAM)
- */
-typedef struct
-{
-    __IO uint8_t _u8_REG;
-    __IO uint8_t RESERVED;
-    __IO uint8_t _u8_RAM;
-    __IO uint16_t _u16_RAM;
-} LCD_TypeDef;
-
-#define LCD_BASE ((uint32_t)(0x68000000 | 0x0003FFFE))
-#define LCD_DEV  ((LCD_TypeDef *)LCD_BASE)
-
-static inline void LCD_WR_REG(uint8_t cmd) {
-    LCD_DEV->_u8_REG = cmd;
-}
-
-static inline void LCD_WR_DATA8(uint8_t data) {
-    LCD_DEV->_u8_RAM = data;
-}
-
-static inline void LCD_WR_DATA16(uint16_t data) {
-    LCD_DEV->_u16_RAM = data;
-}
+#define LCD_WR_REG(cmd)    do { LCD->_u8_REG = (uint8_t)(cmd); } while(0)
+#define LCD_WR_DATA8(val)  do { LCD->_u8_RAM = (uint8_t)(val); } while(0)
+#define LCD_WR_DATA16(val) do { LCD->_u16_RAM = (uint16_t)(val); } while(0)
+#define LCD_RD_DATA8()     (LCD->_u8_RAM)
 
 void lcd_write_half_word(uint16_t da) {
-    uint16_t data = (uint16_t)((da >> 8) | ((da & 0xFF) << 8));
+    uint16_t data = 0;
+    data = da >> 8;
+    data += (da & 0xff) << 8;
     LCD_WR_DATA16(data);
 }
 
-static inline void lcd_write_cmd(uint8_t cmd) {
-    LCD_WR_REG(cmd);
+bool lcd_lock(uint32_t timeout_ms) {
+    if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) {
+        return true;
+    }
+    if (!s_lcd_mutex) {
+        s_lcd_mutex = xSemaphoreCreateRecursiveMutex();
+    }
+    TickType_t ticks = (timeout_ms == UINT32_MAX) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+    return (xSemaphoreTakeRecursive(s_lcd_mutex, ticks) == pdTRUE);
 }
 
-static inline void lcd_write_data8(uint8_t data) {
-    LCD_WR_DATA8(data);
+void lcd_unlock(void) {
+    if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) {
+        return;
+    }
+    if (s_lcd_mutex) {
+        xSemaphoreGiveRecursive(s_lcd_mutex);
+    }
 }
 
-static inline void lcd_write_data16(uint16_t data) {
-    LCD_DEV->_u8_RAM = (uint8_t)(data >> 8);
-    LCD_DEV->_u8_RAM = (uint8_t)(data & 0xFF);
+void lcd_address_set(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
+    LCD_WR_REG(lcddev.setxcmd);
+    LCD_WR_DATA8((uint8_t)(x1 >> 8));
+    LCD_WR_DATA8((uint8_t)(x1 & 0xFF));
+    LCD_WR_DATA8((uint8_t)(x2 >> 8));
+    LCD_WR_DATA8((uint8_t)(x2 & 0xFF));
+
+    LCD_WR_REG(lcddev.setycmd);
+    LCD_WR_DATA8((uint8_t)(y1 >> 8));
+    LCD_WR_DATA8((uint8_t)(y1 & 0xFF));
+    LCD_WR_DATA8((uint8_t)(y2 >> 8));
+    LCD_WR_DATA8((uint8_t)(y2 & 0xFF));
+
+    LCD_WR_REG(lcddev.wramcmd);
+}
+
+void lcd_display_dir(uint8_t dir) {
+    lcddev.dir = dir;
+    if (dir == 0) {
+        lcddev.width = 240;
+        lcddev.height = 240;
+        lcddev.wramcmd = 0x2C;
+        lcddev.setxcmd = 0x2A;
+        lcddev.setycmd = 0x2B;
+        LCD_WR_REG(0x36);
+        LCD_WR_DATA8(0x00);
+    } else {
+        lcddev.width = 240;
+        lcddev.height = 240;
+        lcddev.wramcmd = 0x2C;
+        lcddev.setxcmd = 0x2A;
+        lcddev.setycmd = 0x2B;
+        LCD_WR_REG(0x36);
+        LCD_WR_DATA8(0x70);
+    }
+    lcd_address_set(0, 0, lcddev.width - 1, lcddev.height - 1);
+}
+
+void LCD_Display_Dir(uint8_t dir) {
+    lcd_display_dir(dir);
+}
+
+void lcd_backlight_init(void) {
+    s_htim14.Instance = TIM14;
+    s_htim14.Init.Prescaler = 84 - 1; /* 84MHz APB1 timer clock / 84 = 1MHz (1us tick) */
+    s_htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
+    s_htim14.Init.Period = 50 - 1;    /* 50us period = 20kHz (PWM_BL_PERIOD 50000ns) */
+    s_htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    s_htim14.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+    if (HAL_TIM_PWM_Init(&s_htim14) == HAL_OK) {
+        TIM_OC_InitTypeDef sConfigOC = {0};
+        sConfigOC.OCMode = TIM_OCMODE_PWM1;
+        sConfigOC.Pulse = 40; /* 80% duty cycle (40/50), matching RT-Spark LCD_BackLightSet(80) */
+        sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+        sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+        HAL_TIM_PWM_ConfigChannel(&s_htim14, &sConfigOC, TIM_CHANNEL_1);
+        HAL_TIM_PWM_Start(&s_htim14, TIM_CHANNEL_1);
+    }
+}
+
+void lcd_backlight_set(uint8_t value) {
+    if (value > 100) value = 100;
+    uint32_t pulse = (uint32_t)(50 * value) / 100;
+    if (s_htim14.Instance == TIM14) {
+        __HAL_TIM_SET_COMPARE(&s_htim14, TIM_CHANNEL_1, pulse);
+    }
+}
+
+void LCD_BackLightSet(uint8_t value) {
+    lcd_backlight_set(value);
 }
 
 static void lcd_fsmc_init(void) {
@@ -99,12 +168,17 @@ static void lcd_fsmc_init(void) {
     hsram.Init.WriteBurst = FSMC_WRITE_BURST_DISABLE;
     hsram.Init.PageSize = FSMC_PAGE_SIZE_NONE;
 
-    HAL_SRAM_Init(&hsram, &read_timing, &write_timing);
+    HAL_StatusTypeDef status = HAL_SRAM_Init(&hsram, &read_timing, &write_timing);
+    if (status != HAL_OK) {
+        printf("[LCD] ERROR: HAL_SRAM_Init failed: %d\r\n", status);
+    } else {
+        printf("[LCD] HAL_SRAM_Init OK\r\n");
+    }
 }
 
 void lcd_init(void) {
     if (!s_lcd_mutex) {
-        s_lcd_mutex = xSemaphoreCreateMutex();
+        s_lcd_mutex = xSemaphoreCreateRecursiveMutex();
     }
 
     /* 1. Configure all FSMC and LCD GPIO pins and peripheral clocks */
@@ -120,10 +194,17 @@ void lcd_init(void) {
     lcd_fsmc_init();
     HAL_Delay(100);
 
-    /* 4. Ensure Backlight (PF9) is turned ON */
-    HAL_GPIO_WritePin(LCD_BL_PORT, LCD_BL_PIN, GPIO_PIN_SET);
+    /* 4. Read LCD ID (ST7789 command 0x04) */
+    LCD_WR_REG(0x04);
+    (void)LCD_RD_DATA8(); /* dummy read */
+    uint8_t id1 = LCD_RD_DATA8();
+    uint8_t id2 = LCD_RD_DATA8();
+    uint8_t id3 = LCD_RD_DATA8();
+    lcddev.id = ((uint16_t)id2 << 8) | id3;
+    printf("[LCD] Read ID: 0x%04X (id1=0x%02X, id2=0x%02X, id3=0x%02X)\r\n",
+           lcddev.id, id1, id2, id3);
 
-    /* ST7789 Initialization Sequence (RT-Spark BSP) */
+    /* 5. ST7789 Initialization Sequence (RT-Spark BSP) */
     /* Memory Data Access Control */
     LCD_WR_REG(0x36);
     LCD_WR_DATA8(0x00);
@@ -218,86 +299,58 @@ void lcd_init(void) {
     LCD_WR_REG(0x29); 
     HAL_Delay(100);
 
-    /* Write timing speedup (RT-Spark BSP) */
+    /* 6. Write timing speedup (RT-Spark BSP) */
+    FSMC_Bank1E->BWTR[4] &= ~(0XF << 0);
+    FSMC_Bank1E->BWTR[4] &= ~(0XF << 8);
+    FSMC_Bank1E->BWTR[4] |= 3 << 0;
+    FSMC_Bank1E->BWTR[4] |= 2 << 8;
+
     FSMC_Bank1E->BWTR[6] &= ~(0XF << 0);
     FSMC_Bank1E->BWTR[6] &= ~(0XF << 8);
     FSMC_Bank1E->BWTR[6] |= 3 << 0;
     FSMC_Bank1E->BWTR[6] |= 2 << 8;
 
-    lcd_clear();
-}
+    /* 7. Default display direction */
+    lcd_display_dir(0);
 
-bool lcd_lock(uint32_t timeout_ms) {
-    if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) {
-        return true;
-    }
-    if (!s_lcd_mutex) {
-        s_lcd_mutex = xSemaphoreCreateMutex();
-    }
-    TickType_t ticks = (timeout_ms == UINT32_MAX) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
-    return (xSemaphoreTake(s_lcd_mutex, ticks) == pdTRUE);
-}
+    /* 8. Clear screen before turning on backlight */
+    lcd_clear_screen(LCD_COLOR_BLACK);
 
-void lcd_unlock(void) {
-    if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) {
-        return;
-    }
-    if (s_lcd_mutex) {
-        xSemaphoreGive(s_lcd_mutex);
-    }
-}
-
-void lcd_address_set(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
-    LCD_WR_REG(0x2A);
-    LCD_WR_DATA8((uint8_t)(x1 >> 8));
-    LCD_WR_DATA8((uint8_t)(x1 & 0xFF));
-    LCD_WR_DATA8((uint8_t)(x2 >> 8));
-    LCD_WR_DATA8((uint8_t)(x2 & 0xFF));
-
-    LCD_WR_REG(0x2B);
-    LCD_WR_DATA8((uint8_t)(y1 >> 8));
-    LCD_WR_DATA8((uint8_t)(y1 & 0xFF));
-    LCD_WR_DATA8((uint8_t)(y2 >> 8));
-    LCD_WR_DATA8((uint8_t)(y2 & 0xFF));
-
-    LCD_WR_REG(0x2C);
+    /* 9. Initialize backlight PWM (20kHz, 80% duty) and start */
+    lcd_backlight_init();
+    lcd_backlight_set(80);
 }
 
 void lcd_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
-    if (x0 >= LCD_WIDTH) x0 = LCD_WIDTH - 1;
-    if (y0 >= LCD_HEIGHT) y0 = LCD_HEIGHT - 1;
-    if (x1 >= LCD_WIDTH) x1 = LCD_WIDTH - 1;
-    if (y1 >= LCD_HEIGHT) y1 = LCD_HEIGHT - 1;
+    if (x0 >= lcddev.width) x0 = lcddev.width - 1;
+    if (y0 >= lcddev.height) y0 = lcddev.height - 1;
+    if (x1 >= lcddev.width) x1 = lcddev.width - 1;
+    if (y1 >= lcddev.height) y1 = lcddev.height - 1;
 
     lcd_address_set(x0, y0, x1, y1);
 }
 
 void lcd_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color) {
-    if (x >= LCD_WIDTH || y >= LCD_HEIGHT || w == 0 || h == 0) return;
-    if (x + w > LCD_WIDTH) w = LCD_WIDTH - x;
-    if (y + h > LCD_HEIGHT) h = LCD_HEIGHT - y;
+    if (x >= lcddev.width || y >= lcddev.height || w == 0 || h == 0) return;
+    if (x + w > lcddev.width) w = lcddev.width - x;
+    if (y + h > lcddev.height) h = lcddev.height - y;
 
-    uint8_t hi = (uint8_t)(color >> 8);
-    uint8_t lo = (uint8_t)(color & 0xFF);
-
-    lcd_address_set(x, y, x + w - 1, y + h - 1);
-    uint32_t total = (uint32_t)w * h;
-    for (uint32_t i = 0; i < total; i++) {
-        LCD_DEV->_u8_RAM = hi;
-        LCD_DEV->_u8_RAM = lo;
+    if (lcd_lock(100)) {
+        lcd_address_set(x, y, x + w - 1, y + h - 1);
+        uint32_t total = (uint32_t)w * h;
+        for (uint32_t i = 0; i < total; i++) {
+            lcd_write_half_word(color);
+        }
+        lcd_unlock();
     }
 }
 
 void lcd_clear_screen(uint16_t color) {
     if (lcd_lock(100)) {
-        uint8_t hi = (uint8_t)(color >> 8);
-        uint8_t lo = (uint8_t)(color & 0xFF);
-
-        lcd_address_set(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
-        uint32_t total = (uint32_t)LCD_WIDTH * LCD_HEIGHT;
-        for (uint32_t i = 0; i < total; i++) {
-            LCD_DEV->_u8_RAM = hi;
-            LCD_DEV->_u8_RAM = lo;
+        uint32_t totalpoint = (uint32_t)lcddev.width * lcddev.height;
+        lcd_address_set(0, 0, lcddev.width - 1, lcddev.height - 1);
+        for (uint32_t index = 0; index < totalpoint; index++) {
+            lcd_write_half_word(color);
         }
         lcd_unlock();
     }
@@ -308,10 +361,12 @@ void lcd_clear(void) {
 }
 
 void lcd_draw_point(uint16_t x, uint16_t y, uint16_t color) {
-    if (x >= LCD_WIDTH || y >= LCD_HEIGHT) return;
-    lcd_address_set(x, y, x, y);
-    LCD_DEV->_u8_RAM = (uint8_t)(color >> 8);
-    LCD_DEV->_u8_RAM = (uint8_t)(color & 0xFF);
+    if (x >= lcddev.width || y >= lcddev.height) return;
+    if (lcd_lock(100)) {
+        lcd_address_set(x, y, x, y);
+        lcd_write_half_word(color);
+        lcd_unlock();
+    }
 }
 
 void lcd_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t color) {
@@ -335,28 +390,23 @@ void lcd_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t 
 }
 
 void lcd_show_char(uint16_t x, uint16_t y, char c, uint16_t fg_color, uint16_t bg_color) {
-    if (x + 8 > LCD_WIDTH || y + 16 > LCD_HEIGHT) return;
+    if (x + 8 > lcddev.width || y + 16 > lcddev.height) return;
     if (c < ' ' || c > '~') c = ' ';
 
     uint16_t font_offset = ((uint16_t)(c - ' ')) * 16;
-    uint8_t fg_hi = (uint8_t)(fg_color >> 8);
-    uint8_t fg_lo = (uint8_t)(fg_color & 0xFF);
-    uint8_t bg_hi = (uint8_t)(bg_color >> 8);
-    uint8_t bg_lo = (uint8_t)(bg_color & 0xFF);
-
-    lcd_address_set(x, y, x + 7, y + 15);
-
-    for (int r = 0; r < 16; r++) {
-        uint8_t line = asc2_1608[font_offset + r];
-        for (int b = 0; b < 8; b++) {
-            if (line & (0x80 >> b)) {
-                LCD_DEV->_u8_RAM = fg_hi;
-                LCD_DEV->_u8_RAM = fg_lo;
-            } else {
-                LCD_DEV->_u8_RAM = bg_hi;
-                LCD_DEV->_u8_RAM = bg_lo;
+    if (lcd_lock(100)) {
+        lcd_address_set(x, y, x + 7, y + 15);
+        for (int r = 0; r < 16; r++) {
+            uint8_t line = asc2_1608[font_offset + r];
+            for (int b = 0; b < 8; b++) {
+                if (line & (0x80 >> b)) {
+                    lcd_write_half_word(fg_color);
+                } else {
+                    lcd_write_half_word(bg_color);
+                }
             }
         }
+        lcd_unlock();
     }
 }
 
@@ -376,11 +426,11 @@ void lcd_show_string(uint16_t x, uint16_t y, const char* str, uint16_t fg_color,
                 str++;
                 continue;
             }
-            if (cur_x + 8 > LCD_WIDTH) {
+            if (cur_x + 8 > lcddev.width) {
                 cur_x = x;
                 cur_y += 16;
             }
-            if (cur_y + 16 > LCD_HEIGHT) {
+            if (cur_y + 16 > lcddev.height) {
                 break;
             }
             lcd_show_char(cur_x, cur_y, *str++, fg_color, bg_color);
@@ -408,7 +458,7 @@ void lcd_print(const char* str) {
         while (*str) {
             uint16_t x = s_cursor_col * 8;
             uint16_t y = s_cursor_row * 16;
-            if (x + 8 <= LCD_WIDTH && y + 16 <= LCD_HEIGHT) {
+            if (x + 8 <= lcddev.width && y + 16 <= lcddev.height) {
                 lcd_draw_char(x, y, *str, LCD_COLOR_WHITE, LCD_COLOR_BLACK);
                 s_cursor_col++;
                 if (s_cursor_col >= 30) {
@@ -437,7 +487,22 @@ void lcd_display_lines(const char* line1, const char* line2) {
 static char s_line1[31] = {0};
 static char s_line2[31] = {0};
 
+_lcd_dev lcddev = {
+    LCD_WIDTH,  /* width */
+    LCD_HEIGHT, /* height */
+    0,          /* id */
+    0,          /* dir */
+    0x2C,       /* wramcmd */
+    0x2A,       /* setxcmd */
+    0x2B        /* setycmd */
+};
+
 void lcd_init(void) {}
+void lcd_display_dir(uint8_t dir) { lcddev.dir = dir; }
+void LCD_Display_Dir(uint8_t dir) { lcd_display_dir(dir); }
+void lcd_backlight_init(void) {}
+void lcd_backlight_set(uint8_t value) { (void)value; }
+void LCD_BackLightSet(uint8_t value) { (void)value; }
 bool lcd_lock(uint32_t timeout_ms) { (void)timeout_ms; return true; }
 void lcd_unlock(void) {}
 void lcd_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) { (void)x0; (void)y0; (void)x1; (void)y1; }

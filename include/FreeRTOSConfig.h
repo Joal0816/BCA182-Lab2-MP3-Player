@@ -47,7 +47,7 @@ extern "C" {
 
 /* Synchronization */
 #define configUSE_MUTEXES                       1
-#define configUSE_RECURSIVE_MUTEXES             0
+#define configUSE_RECURSIVE_MUTEXES             1
 #define configUSE_COUNTING_SEMAPHORES           1
 #define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_QUEUE_SETS                    0
