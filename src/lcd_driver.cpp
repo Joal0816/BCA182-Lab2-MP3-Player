@@ -128,9 +128,9 @@ void lcd_init(void) {
     LCD_WR_REG(0x36);
     LCD_WR_DATA8(0x00);
 
-    /* RGB 5-6-5-bit (16-bit format) */
+    /* RGB 5-6-5-bit (16-bit format, RT-Spark BSP uses 0x65) */
     LCD_WR_REG(0x3A); 
-    LCD_WR_DATA8(0x55);
+    LCD_WR_DATA8(0x65);
 
     /* Porch Setting */
     LCD_WR_REG(0xB2);
@@ -217,6 +217,12 @@ void lcd_init(void) {
     /* Display On */
     LCD_WR_REG(0x29); 
     HAL_Delay(100);
+
+    /* Write timing speedup (RT-Spark BSP) */
+    FSMC_Bank1E->BWTR[6] &= ~(0XF << 0);
+    FSMC_Bank1E->BWTR[6] &= ~(0XF << 8);
+    FSMC_Bank1E->BWTR[6] |= 3 << 0;
+    FSMC_Bank1E->BWTR[6] |= 2 << 8;
 
     lcd_clear();
 }
