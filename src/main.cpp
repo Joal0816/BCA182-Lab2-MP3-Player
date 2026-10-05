@@ -25,6 +25,8 @@ extern "C" void SysTick_Handler(void) {
 
 /* FreeRTOS Hooks */
 extern "C" void vApplicationIdleHook(void) {
+    /* Sleep until the next interrupt to reduce power consumption */
+    __WFI();
 }
 
 extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {

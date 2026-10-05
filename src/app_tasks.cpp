@@ -200,9 +200,6 @@ void update_lcd_leds_thread(void *pvParameters) {
         lcd_draw_string(0, 160, l_vol, vol_color, LCD_COLOR_BLACK);
         lcd_draw_string(0, 200, l_hint, hint_color, LCD_COLOR_BLACK);
 
-        // Also update legacy 2-line buffer
-        lcd_display_lines(l_song, l_vol);
-
         // Cooperative scheduling delay
         vTaskDelay(pdMS_TO_TICKS(100));
     }

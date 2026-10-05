@@ -329,14 +329,14 @@ static const float Symphony_No40_beat[] = {
 static const float Symphony_No40_tempo = 0.1f;
 
 // 8 Song objects
-const Song FUR_ELISE("Fur Elise -", "Beethoven", Fur_Elise_note, Fur_Elise_beat, Fur_Elise_tempo, 72);
-const Song CANNON_IN_D("Canon In D - ", "Pachebelbel", Canon_In_D_note, Canon_In_D_beat, Canon_In_D_tempo, 88);
-const Song MINUET_IN_G_MAJOR("Minuet in G", "major - Bach", Minuet_In_G_major_note, Minuet_In_G_major_beat, Minuet_In_G_major_tempo, 90);
-const Song TURKISH_MARCH("Turkish March - ", " Mozart", Turkish_March_note, Turkish_March_beat, Turkish_March_tempo, 176);
-const Song NOCTRUNE_IN_E_FLAT("Nocturne in E ", "flat -Chopin", Nocturne_in_E_flat_note, Nocturne_in_E_flat_beat, Nocturne_in_E_flat_tempo, 116);
-const Song WALTZ_NO2("Waltz No. 2 - ", "Shostakovich", Waltz_No2_note, Waltz_No2_beat, Waltz_No2_tempo, 135);
-const Song NOCTRUNE_IN_C_SHARP_MAJOR("Nocturne in C ", "sharp - Chopin", Nocturne_in_C_sharp_minor_note, Nocturne_in_C_sharp_minor_beat, Nocturne_in_C_sharp_minor_tempo, 64);
-const Song SYMPHONY_NO40("Symphony No. 40 ", "- Mozart", Symphony_No40_note, Symphony_No40_beat, Symphony_No40_tempo, 168);
+const Song FUR_ELISE("Fur Elise", "Beethoven", Fur_Elise_note, Fur_Elise_beat, Fur_Elise_tempo, 72);
+const Song CANNON_IN_D("Canon In D", "Pachelbel", Canon_In_D_note, Canon_In_D_beat, Canon_In_D_tempo, 88);
+const Song MINUET_IN_G_MAJOR("Minuet in G major", "Bach", Minuet_In_G_major_note, Minuet_In_G_major_beat, Minuet_In_G_major_tempo, 90);
+const Song TURKISH_MARCH("Turkish March", "Mozart", Turkish_March_note, Turkish_March_beat, Turkish_March_tempo, 176);
+const Song NOCTRUNE_IN_E_FLAT("Nocturne in E-flat", "Chopin", Nocturne_in_E_flat_note, Nocturne_in_E_flat_beat, Nocturne_in_E_flat_tempo, 116);
+const Song WALTZ_NO2("Waltz No. 2", "Shostakovich", Waltz_No2_note, Waltz_No2_beat, Waltz_No2_tempo, 135);
+const Song NOCTRUNE_IN_C_SHARP_MAJOR("Nocturne in C-sharp", "Chopin", Nocturne_in_C_sharp_minor_note, Nocturne_in_C_sharp_minor_beat, Nocturne_in_C_sharp_minor_tempo, 64);
+const Song SYMPHONY_NO40("Symphony No. 40", "Mozart", Symphony_No40_note, Symphony_No40_beat, Symphony_No40_tempo, 168);
 
 // Song array containing all 8 songs in index order 0 to 7
 const Song SONGS[NUM_SONGS] = {

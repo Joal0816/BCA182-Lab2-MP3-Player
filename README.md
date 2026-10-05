@@ -19,7 +19,7 @@ This project implements a multi-threaded embedded MP3/audio player adhering stri
 - **Playback Control:** On-board `USER_BUTTON` toggles between Play and Pause.
 - **RGB LED Feedback:**
   - **Blue LED:** Song is actively playing.
-  - **Red LED:** Player is paused / stopped.
+  - **Red LED:** Player is paused.
   - **Green LED:** Changing/selecting a song (5-second confirmation window active).
 - **LCD Display (Protected via Mutex):**
   - Displays the active song title and composer during playback.
@@ -38,15 +38,15 @@ This project implements a multi-threaded embedded MP3/audio player adhering stri
 
 | Peripheral | Board Pin / Net | MCU Pin | Configuration / Notes |
 | :--- | :--- | :--- | :--- |
-| **Button 1 (Select/Confirm)** | External Header | `PE2` | Active-LOW, internal pull-up / external 330 $\Omega$ pull-up |
-| **Button 2 (Bit 2 - MSB)** | External Header | `PE3` | Active-LOW, internal pull-up |
-| **Button 3 (Bit 1)** | External Header | `PE4` | Active-LOW, internal pull-up |
-| **Button 4 (Bit 0 - LSB)** | External Header | `PE5` | Active-LOW, internal pull-up |
-| **User Button (Play/Pause)** | On-board KEY0 | `PA0` | Active-LOW / Active-HIGH input |
+| **Button 1 (Select/Confirm)** | External Header | `PB0` | Active-LOW, internal pull-up / external 330 $\Omega$ pull-up |
+| **Button 2 (Bit 2 - MSB)** | External Header | `PB1` | Active-LOW, internal pull-up |
+| **Button 3 (Bit 1)** | External Header | `PB2` | Active-LOW, internal pull-up |
+| **Button 4 (Bit 0 - LSB)** | External Header | `PB3` | Active-LOW, internal pull-up |
+| **User Button (Play/Pause)** | On-board KEY0 | `PA0` | Active-HIGH (internal pull-down) |
 | **Potentiometer (Volume)** | Header `A0` | `PA1` | ADC1 Channel 1 (12-bit resolution: 0–4095) |
-| **Red LED** | On-board / Ext | `PF12` | Active-HIGH / Active-LOW indicator (Song Paused) |
-| **Green LED** | On-board / Ext | `PF14` | Active-HIGH / Active-LOW indicator (Changing Song) |
-| **Blue LED** | On-board / Ext | `PF11` | Active-HIGH / Active-LOW indicator (Song Playing) |
+| **Red LED** | On-board / Ext | `PF11` | Active-HIGH indicator (Song Paused) |
+| **Green LED** | On-board / Ext | `PF14` | Active-HIGH indicator (Changing Song) |
+| **Blue LED** | On-board / Ext | `PF12` | Active-HIGH indicator (Song Playing) |
 | **Audio Output** | PWM Audio Pin | `PB8` | TIM4 Channel 3 PWM / Tone Generator |
 | **LCD Parallel Port** | FSMC 8080 Bus | `PD/PE/PF/PG` | 240x240 ST7789 IPS LCD display |
 | **UART TX / RX** | USART1 | `PA9` / `PA10` | 115200 baud, 8-N-1 |
@@ -58,12 +58,12 @@ This project implements a multi-threaded embedded MP3/audio player adhering stri
 All 8 songs defined in `song_def.h` are implemented:
 1. `[000]` **Fur Elise** — *Beethoven*
 2. `[001]` **Canon In D** — *Pachelbel*
-3. `[010]` **Minuet in G** — *Bach*
-4. `[011]` **Ode to Joy** — *Beethoven*
-5. `[100]` **Twinkle Twinkle Little Star** — *Traditional*
-6. `[101]` **The Pink Panther Theme** — *Henry Mancini*
-7. `[110]` **Super Mario Theme** — *Koji Kondo*
-8. `[111]` **Eine Kleine Nachtmusik** — *Mozart*
+3. `[010]` **Minuet in G major** — *Bach*
+4. `[011]` **Turkish March** — *Mozart*
+5. `[100]` **Nocturne in E-flat** — *Chopin*
+6. `[101]` **Waltz No. 2** — *Shostakovich*
+7. `[110]` **Nocturne in C-sharp** — *Chopin*
+8. `[111]` **Symphony No. 40** — *Mozart*
 
 ---
 
@@ -75,7 +75,7 @@ pio run -e black_f407zg
 ```
 - **Target:** STM32F407ZGT6
 - **Result:** Successfully compiles with 0 errors and 0 warnings.
-- **Footprint:** ~31 KB Flash (3.0%), ~41 KB RAM (31.9%).
+- **Footprint:** ~35 KB Flash (3.4%), ~41 KB RAM (32.0%).
 
 ### Native Unit Tests
 ```bash

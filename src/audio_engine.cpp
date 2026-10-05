@@ -108,7 +108,9 @@ void audio_engine_pause(void) {
 }
 
 void audio_engine_resume(void) {
-    if (!s_active_song) return;
+    // Guard: if already playing (e.g. confirmation canceled mid-song),
+    // don't re-trigger the current note or disturb the pending note timer.
+    if (!s_active_song || s_playing) return;
     s_playing = true;
     audio_advance_note();
 }
