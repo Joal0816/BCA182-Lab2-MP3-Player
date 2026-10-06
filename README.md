@@ -87,3 +87,30 @@ pio test -e native
   3. `test_volume_scaling`: Verifies 12-bit ADC quantization to 0–100% volume and gain scaling.
   4. `test_state_machine`: Verifies all player states (`STOPPED`, `PLAYING`, `PAUSED`, `CONFIRMING`), Button 1 confirmation, countdown decrements, and 5-second timeout auto-reverts.
 - **Test Results:** 18/18 test cases passing.
+
+### Static Code Analysis
+```bash
+pio check -e black_f407zg --severity high --severity medium
+```
+- **Result:** cppcheck PASSED — no defects found (high/medium severity).
+
+---
+
+## 5. Hardware Demo Checklist
+
+Run through this once on the RT-Spark board to verify every lab requirement on hardware.
+Flash with `pio run -e black_f407zg -t upload`, then open a serial terminal at 115200 baud.
+
+| # | Action | Expected result | Lab requirement |
+| :-- | :--- | :--- | :--- |
+| 1 | Power on | LCD shows boot screen, UART prints the usage instructions | UART instructions, LCD init |
+| 2 | Wait / idle | UART stays quiet, board enters sleep (low power) between events | Sleep mode |
+| 3 | Leave all buttons released, press Button 1 | Candidate = song 1 (binary 000) shown in green confirmation screen | Binary selection (all low = first song) |
+| 4 | Hold Buttons 2+3 (binary 110), press Button 1 | Candidate = Symphony No. 40 shown; green LED on; 5 s countdown ticks | Song select + confirmation message + green LED |
+| 5 | Press Button 1 again within 5 s | Song starts, blue LED on, LCD shows title + composer | Confirm + playing state |
+| 6 | Do nothing for 5 s after selecting (new selection) | Countdown expires, previous playback continues normally | 5-second Timeout |
+| 7 | Press USER button | Playback pauses, red LED on, LCD shows PAUSED | USER stop/play + red LED |
+| 8 | Press USER button again | Playback resumes, blue LED on | USER stop/play |
+| 9 | Turn the potentiometer | Volume % bar on LCD changes, loudness changes | Volume control |
+| 10 | Confirm any song and hold the speaker to your ear | Notes play at the tempo of the selected song, loop when finished | Ticker-driven music playback |
+| 11 | Check UART terminal | Instructions block printed at boot (115200 8-N-1) | UART instructions |
