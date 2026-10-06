@@ -30,7 +30,7 @@ This project implements a multi-threaded embedded MP3/audio player adhering stri
   1. `update_lcd_leds_thread`: Manages display updates under mutex lock and drives RGB LEDs.
   2. `polling_buttons`: Debounces push buttons, handles 3-bit binary selection, Button 1 confirmation, and playback toggles.
   3. `adjust_volume`: Samples potentiometer ADC and adjusts sound volume.
-  - Uses FreeRTOS Software Timers to implement the required `Ticker` (tone rhythm) and `Timeout` (5s selection timeout) interfaces.
+  - Uses FreeRTOS Software Timers to implement the required `Ticker` (recurring 1 ms music note sequencer) and `Timeout` (one-shot 5s selection confirmation) interfaces, per the lab's Timeout-vs-Ticker requirement.
 
 ---
 

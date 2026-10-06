@@ -8,10 +8,11 @@
 #include "hardware_config.h"
 
 static TIM_HandleTypeDef s_htim4;
-static Timeout s_note_timeout;
+static Ticker s_note_ticker;
 static const Song* s_active_song = nullptr;
 static uint16_t s_note_idx = 0;
 static bool s_playing = false;
+static uint32_t s_note_ms_remaining = 0;
 
 static void audio_set_frequency(float freq_hz, float volume_gain) {
     if (freq_hz <= 0.0f || volume_gain <= 0.001f) {
@@ -59,8 +60,22 @@ static void audio_advance_note(void) {
 
     s_note_idx++;
 
-    // Schedule next note via FreeRTOS Timeout
-    s_note_timeout.attach(audio_advance_note, duration_s);
+    // Remaining time for this note, consumed by the 1 ms music Ticker
+    s_note_ms_remaining = (uint32_t)(duration_s * 1000.0f);
+    if (s_note_ms_remaining == 0) s_note_ms_remaining = 1;
+}
+
+/* Music sequencer step, called repeatedly by the Ticker interface (lab
+ * requirement: use the Ticker interface to play music). One tick = 1 ms
+ * (configTICK_RATE_HZ = 1000), giving millisecond note timing accuracy. */
+static void audio_ticker_cb(void) {
+    if (!s_playing) return;
+    if (s_note_ms_remaining > 0) {
+        s_note_ms_remaining--;
+    }
+    if (s_note_ms_remaining == 0) {
+        audio_advance_note();
+    }
 }
 
 void audio_engine_init(void) {
@@ -99,11 +114,12 @@ void audio_engine_play_song(uint8_t song_index) {
     s_note_idx = 0;
     s_playing = true;
     audio_advance_note();
+    s_note_ticker.attach_ms(audio_ticker_cb, 1);
 }
 
 void audio_engine_pause(void) {
     s_playing = false;
-    s_note_timeout.detach();
+    s_note_ticker.detach();
     audio_set_frequency(0, 0);
 }
 
@@ -113,12 +129,14 @@ void audio_engine_resume(void) {
     if (!s_active_song || s_playing) return;
     s_playing = true;
     audio_advance_note();
+    s_note_ticker.attach_ms(audio_ticker_cb, 1);
 }
 
 void audio_engine_stop(void) {
     s_playing = false;
-    s_note_timeout.detach();
+    s_note_ticker.detach();
     s_note_idx = 0;
+    s_note_ms_remaining = 0;
     audio_set_frequency(0, 0);
 }
 

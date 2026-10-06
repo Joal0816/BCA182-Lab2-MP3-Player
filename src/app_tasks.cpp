@@ -54,11 +54,16 @@ static void set_rgb_leds(PlayerState state) {
 
 static void on_confirm_timeout_cb(void) {
     s_second_ticker.detach();
+    /* Serialize with polling_buttons: this runs in the timer service task */
+    taskENTER_CRITICAL();
     player_handle_event(&s_player, PLAYER_EVENT_CONFIRM_TIMEOUT, 0);
+    taskEXIT_CRITICAL();
 }
 
 static void on_second_tick_cb(void) {
+    taskENTER_CRITICAL();
     player_tick_second(&s_player);
+    taskEXIT_CRITICAL();
 }
 
 void update_lcd_leds_thread(void *pvParameters) {
@@ -226,9 +231,19 @@ void polling_buttons(void *pvParameters) {
 
         // Detect user button rising edge
         if (user_pressed && !prev_user) {
-            PlayerState prev = player_get_state(&s_player);
+            PlayerState prev;
+            PlayerState curr;
+            taskENTER_CRITICAL();
+            prev = player_get_state(&s_player);
             player_handle_event(&s_player, PLAYER_EVENT_USER_BTN, 0);
-            PlayerState curr = player_get_state(&s_player);
+            curr = player_get_state(&s_player);
+            taskEXIT_CRITICAL();
+
+            if (prev == PLAYER_STATE_CONFIRMING && curr != PLAYER_STATE_CONFIRMING) {
+                // Selection cancelled: stop the 5s timers immediately
+                s_confirm_timeout.detach();
+                s_second_ticker.detach();
+            }
 
             if (curr == PLAYER_STATE_PLAYING) {
                 if (prev == PLAYER_STATE_STOPPED) {
@@ -244,22 +259,27 @@ void polling_buttons(void *pvParameters) {
 
         // Detect button 1 rising edge
         if (btn1_pressed && !prev_btn1) {
-            PlayerState state = player_get_state(&s_player);
-
+            PlayerState state;
+            uint8_t confirmed_idx = 0;
+            taskENTER_CRITICAL();
+            state = player_get_state(&s_player);
             if (state == PLAYER_STATE_CONFIRMING) {
-                // Confirm selection
-                s_confirm_timeout.detach();
-                s_second_ticker.detach();
                 player_handle_event(&s_player, PLAYER_EVENT_BTN1_CONFIRM, 0);
-
-                // Play the newly confirmed song
-                audio_engine_play_song(player_get_current_song(&s_player));
+                confirmed_idx = player_get_current_song(&s_player);
             } else {
                 // Select candidate song using binary buttons 2-4
                 uint8_t cand_idx = decode_active_low_buttons(btn2_val, btn3_val, btn4_val);
                 player_handle_event(&s_player, PLAYER_EVENT_BTN1_SELECT, cand_idx);
+            }
+            taskEXIT_CRITICAL();
 
-                // Start 5-second countdown timer and 1-second display ticker
+            if (state == PLAYER_STATE_CONFIRMING) {
+                // Confirm selection: stop timers, then play the confirmed song
+                s_confirm_timeout.detach();
+                s_second_ticker.detach();
+                audio_engine_play_song(confirmed_idx);
+            } else {
+                // Start 5-second countdown (Timeout) and 1-second display ticker
                 s_confirm_timeout.attach(on_confirm_timeout_cb, 5.0f);
                 s_second_ticker.attach(on_second_tick_cb, 1.0f);
             }
