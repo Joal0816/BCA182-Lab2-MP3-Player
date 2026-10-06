@@ -68,12 +68,23 @@ echo -e "${GREEN}Detected board on port: ${TARGET_PORT}${NC}"
 echo -e "Flashing firmware..."
 pio run -e black_f407zg -t upload
 
-echo -e "Capturing UART boot banner (115200 baud)..."
+echo -e "Waiting for board to finish booting..."
+sleep 1
+
+# Issue a clean target reset via OpenOCD / ST-Link while monitoring UART
+echo -e "Resetting target MCU and listening on ${TARGET_PORT}..."
+OPENOCD_BIN="$(find ~/.platformio/packages/tool-openocd -name openocd -type f 2>/dev/null | head -n1 || echo "openocd")"
 UART_LOG=$(mktemp)
 
-# Read serial port with stty and timeout
-stty -F "$TARGET_PORT" 115200 raw -echo -echoe -echok
-timeout 5 cat "$TARGET_PORT" > "$UART_LOG" || true
+# Start background UART reader
+( stty -F "$TARGET_PORT" 115200 raw -echo -echoe -echok 2>/dev/null || true
+  timeout 4 cat "$TARGET_PORT" > "$UART_LOG" 2>/dev/null || true ) &
+UART_PID=$!
+sleep 0.3
+
+# Hardware reset
+"$OPENOCD_BIN" -f interface/stlink.cfg -f target/stm32f4x.cfg -c "init; reset run; shutdown" >/dev/null 2>&1 || true
+wait $UART_PID || true
 
 echo -e "\n${BLUE}--- UART Output Captured ---${NC}"
 cat "$UART_LOG"
